@@ -41,7 +41,7 @@ impl Aggregate<ExampleEvent> for ExampleAggregate {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let event_store = EventStore::<ExampleAggregate, _>::builder().event_store_adapter(PostgresAdapter::setup().await?).notification_adapter(PubsubAdapter::setup().await?).build();
+    let event_store = EventStore::<ExampleAggregate, _>::builder().event_store_adapter(PostgresAdapter::setup().await?).notification_adapter(PubsubAdapter::setup("test-subscription").await?).build();
 
     let id = Uuid::new_v4();
     event_store.create(Event::list_builder().add_event(ExampleEvent::Example(), None).build_new(id)).await?;
