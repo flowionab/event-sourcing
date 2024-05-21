@@ -11,7 +11,7 @@ use super::EventListBuilder;
 /// Besides from the payload, the event structure contains some additional helpful fields
 #[derive(Debug, Clone)]
 #[cfg_attr(
-    feature = "serde_support",
+    feature = "serde",
     derive(serde::Serialize, serde::Deserialize)
 )]
 pub struct Event<T> {
@@ -37,17 +37,4 @@ impl<T: fmt::Debug> Event<T> {
     }
 }
 
-// impl<T: DeserializeOwned> TryFrom<tokio_postgres::Row> for Event<T> {
-//     type Error = Box<dyn std::error::Error + Send + Sync>;
-//
-//     fn try_from(row: tokio_postgres::Row) -> Result<Self, Self::Error> {
-//         let payload = serde_json::from_value(row.get::<_, serde_json::Value>(4))?;
-//         Ok(Self {
-//             aggregate_id: row.get(0),
-//             event_id: row.get::<_, i64>(1) as u64,
-//             created_at: row.get(2),
-//             user_id: row.get(3),
-//             payload,
-//         })
-//     }
-// }
+

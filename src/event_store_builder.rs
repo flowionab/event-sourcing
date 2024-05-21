@@ -27,7 +27,7 @@ impl<A, E> EventStoreBuilder<A, E, (), ()> {
 }
 
 impl<A, E, ESA, NA> EventStoreBuilder<A, E, ESA, NA> {
-    pub fn event_store_adapter<T: EventStoreAdapter<E>>(self, event_store_adapter: T) -> EventStoreBuilder<A, E, T, NA> {
+    pub fn event_store_adapter<T: EventStoreAdapter<A, E>>(self, event_store_adapter: T) -> EventStoreBuilder<A, E, T, NA> {
         EventStoreBuilder {
             event_store_adapter,
             notification_adapter: self.notification_adapter,
@@ -46,7 +46,7 @@ impl<A, E, ESA, NA> EventStoreBuilder<A, E, ESA, NA> {
     }
 }
 
-impl<A: Aggregate<E> + Send + Sync + Clone, E, ESA: EventStoreAdapter<E> + 'static, NA: NotificationAdapter<A, E> + 'static> EventStoreBuilder<A, E, ESA, NA> {
+impl<A: Aggregate<E> + Send + Sync + Clone, E, ESA: EventStoreAdapter<A, E> + 'static, NA: NotificationAdapter<A, E> + 'static> EventStoreBuilder<A, E, ESA, NA> {
 
     pub fn build(self) -> EventStore<A, E> {
         EventStore::new(self.event_store_adapter, self.notification_adapter, self.store_attempts)

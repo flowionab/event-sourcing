@@ -21,14 +21,14 @@ use uuid::Uuid;
 /// it can also be used to fetch them, and to stream updates synced between different instances
 #[derive(Debug, Clone)]
 pub struct EventStore<A: Aggregate<E>, E> {
-    adapter: Arc<dyn EventStoreAdapter<E>>,
+    adapter: Arc<dyn EventStoreAdapter<A, E>>,
     notification_adapter: Arc<dyn NotificationAdapter<A, E>>,
     store_attempts: usize,
     phantom_data: PhantomData<A>,
 }
 
 impl<A: Aggregate<E> + Send + Sync + Clone, E> EventStore<A, E> {
-    pub(crate) fn new<T: EventStoreAdapter<E> + 'static, NT: NotificationAdapter<A, E> + 'static>(
+    pub(crate) fn new<T: EventStoreAdapter<A, E> + 'static, NT: NotificationAdapter<A, E> + 'static>(
         adapter: T,
         notification_adapter: NT,
         store_attempts: usize
@@ -351,26 +351,30 @@ mod tests {
                 version: 0,
             }
         }
+
+        fn name() -> &'static str {
+            "test"
+        }
     }
 
     #[tokio::test]
     async fn get_none_existing_aggregate() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
 
-        let aggregate = repository.aggregate(id).await.unwrap();
+        let aggregate = store.aggregate(id).await.unwrap();
         assert_eq!(aggregate, None);
     }
 
     #[tokio::test]
     async fn get_existing_aggregate() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
@@ -386,14 +390,14 @@ mod tests {
             .await
             .unwrap();
 
-        let aggregate = repository.aggregate(id).await.unwrap();
+        let aggregate = store.aggregate(id).await.unwrap();
         assert!(aggregate.is_some());
     }
 
     #[tokio::test]
     async fn get_ids_should_return_all_ids_in_store() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
@@ -408,14 +412,14 @@ mod tests {
             .await
             .unwrap();
 
-        let aggregate: Vec<_> = repository.ids().await.unwrap().collect().await;
+        let aggregate: Vec<_> = store.ids().await.unwrap().collect().await;
         assert_eq!(aggregate, vec![id]);
     }
 
     #[tokio::test]
     async fn get_all_aggregates_should_return_all_aggregates_in_store() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
@@ -430,20 +434,20 @@ mod tests {
             .await
             .unwrap();
 
-        let aggregate: Vec<_> = repository.all().await.unwrap().try_collect().await.unwrap();
+        let aggregate: Vec<_> = store.all().await.unwrap().try_collect().await.unwrap();
         assert_eq!(aggregate[0].aggregate_id(), id);
     }
 
     #[tokio::test]
     async fn create_without_external_ids_should_work() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -459,13 +463,13 @@ mod tests {
     #[tokio::test]
     async fn create_without_external_ids_should_not_work_twice() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -473,7 +477,7 @@ mod tests {
             )
             .await
             .unwrap();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -486,7 +490,7 @@ mod tests {
     #[tokio::test]
     async fn create_without_external_ids_should_send_notifications() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
@@ -494,7 +498,7 @@ mod tests {
         let stream = adapter.listen_for_events().await.unwrap();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -511,13 +515,13 @@ mod tests {
     #[tokio::test]
     async fn create_with_external_ids_should_work() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create_with_external_ids(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -534,12 +538,12 @@ mod tests {
     #[tokio::test]
     async fn create_with_external_ids_should_not_work_twice() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
-        repository
+        store
             .create_with_external_ids(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -548,7 +552,7 @@ mod tests {
             )
             .await
             .unwrap();
-        repository
+        store
             .create_with_external_ids(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -562,13 +566,13 @@ mod tests {
     #[tokio::test]
     async fn store_should_store_events() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -577,7 +581,7 @@ mod tests {
             .await
             .unwrap();
 
-        repository
+        store
             .store(id, |aggregate| {
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -594,14 +598,14 @@ mod tests {
     #[tokio::test]
     async fn store_should_fail_if_aggregate_does_not_exist() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
 
-        repository
+        store
             .store(id, |aggregate| {
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -614,14 +618,14 @@ mod tests {
     #[tokio::test]
     async fn store_should_fail_if_the_event_sequence_is_invalid() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
 
-        repository
+        store
             .store(id, |_aggregate| {
                 vec![
                     Event {
@@ -647,13 +651,13 @@ mod tests {
     #[tokio::test]
     async fn store_should_send_events() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -664,7 +668,7 @@ mod tests {
 
         let stream = adapter.listen_for_events().await.unwrap();
 
-        repository
+        store
             .store(id, |aggregate| {
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -681,13 +685,13 @@ mod tests {
     #[tokio::test]
     async fn try_store_should_store_events() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -696,7 +700,7 @@ mod tests {
             .await
             .unwrap();
 
-        repository
+        store
             .try_store(id, |aggregate| {
                 Result::<_, Infallible>::Ok(
                     Event::list_builder()
@@ -716,14 +720,14 @@ mod tests {
     #[tokio::test]
     async fn try_store_should_fail_if_aggregate_does_not_exist() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
 
-        repository
+        store
             .try_store(id, |aggregate| {
                 Result::<_, Infallible>::Ok(
                     Event::list_builder()
@@ -738,14 +742,14 @@ mod tests {
     #[tokio::test]
     async fn try_store_should_fail_if_the_event_sequence_is_invalid() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
 
-        repository
+        store
             .try_store(id, |_aggregate| {
                 Result::<_, Infallible>::Ok(vec![
                     Event {
@@ -771,13 +775,13 @@ mod tests {
     #[tokio::test]
     async fn try_store_error_thrown_inside_should_be_propegated() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -786,7 +790,7 @@ mod tests {
             .await
             .unwrap();
 
-        let err = repository
+        let err = store
             .try_store(id, |_aggregate| {
                 Err::<Vec<Event<TestEvent>>, &str>("Failure")
             })
@@ -800,13 +804,13 @@ mod tests {
     #[tokio::test]
     async fn try_store_send_events() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -815,7 +819,7 @@ mod tests {
             .await
             .unwrap();
 
-        repository
+        store
             .try_store(id, |aggregate| {
                 Result::<_, Infallible>::Ok(
                     Event::list_builder()
@@ -835,13 +839,13 @@ mod tests {
     #[tokio::test]
     async fn remove_should_remove_all_events_for_aggregate() {
         let adapter = InMemoryAdapter::new();
-        let repository = EventStore::<TestAggregate, _>::builder()
+        let store = EventStore::<TestAggregate, _>::builder()
             .event_store_adapter(adapter.clone())
             .notification_adapter(adapter.clone())
             .build();
 
         let id = Uuid::new_v4();
-        repository
+        store
             .create(
                 Event::list_builder()
                     .add_event(TestEvent::Test(), None)
@@ -854,7 +858,7 @@ mod tests {
 
         assert_eq!(events.len(), 1);
 
-        repository.remove(id).await.unwrap();
+        store.remove(id).await.unwrap();
 
         let events = adapter.get_events(id).await.unwrap();
 

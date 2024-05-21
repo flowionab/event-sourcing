@@ -36,7 +36,7 @@ impl<A: Send + Clone, E: Clone> InMemoryAdapter<A, E> {
 }
 
 #[async_trait]
-impl<A: fmt::Debug + Send, E: Clone + fmt::Debug + Send + Sync> EventStoreAdapter<E>
+impl<A: fmt::Debug + Send, E: Clone + fmt::Debug + Send + Sync> EventStoreAdapter<A, E>
     for InMemoryAdapter<A, E>
 {
     async fn get_events(&self, aggregate_id: Uuid) -> Result<Vec<Event<E>>, AdapterError> {

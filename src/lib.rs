@@ -1,8 +1,9 @@
 #![doc = include_str!("../README.md")]
 #![deny(warnings)]
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
+extern crate core;
 
 /// The adapter modules contains both types used for implementing an adapter, and prebuilt adapters
 /// ready for use

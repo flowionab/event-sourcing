@@ -11,4 +11,5 @@ pub trait Aggregate<T> {
     fn apply(&mut self, event: &Event<T>);
 
     fn new_with_aggregate_id(aggregate_id: Uuid) -> Self;
+    fn name() -> &'static str;
 }

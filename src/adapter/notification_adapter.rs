@@ -19,6 +19,10 @@ pub trait NotificationAdapter<A, E>: fmt::Debug + Send + Sync {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct ListenForEventData<A, E> {
     pub event: Event<E>,
     pub old_aggregate: Option<A>,

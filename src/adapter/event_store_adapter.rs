@@ -9,7 +9,7 @@ use futures::stream::BoxStream;
 use uuid::Uuid;
 
 #[async_trait]
-pub trait EventStoreAdapter<E>: fmt::Debug + Send + Sync {
+pub trait EventStoreAdapter<A, E>: fmt::Debug + Send + Sync {
     async fn get_events(&self, aggregate_id: Uuid) -> Result<Vec<Event<E>>, AdapterError>;
     async fn stream_ids(&self) -> Result<BoxStream<Uuid>, AdapterError>;
 

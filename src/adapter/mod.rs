@@ -9,7 +9,7 @@ pub mod in_memory;
 mod notification_adapter;
 
 #[cfg(feature = "pubsub")]
-mod pubsub;
+pub mod pubsub;
 
 pub use self::event_store_adapter::EventStoreAdapter;
 pub use self::notification_adapter::*;
