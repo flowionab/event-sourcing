@@ -1,0 +1,30 @@
+[package]
+name = "event-sourcing"
+version = "0.1.0"
+edition = "2021"
+description = "Event sourcing made ease!"
+license = "MIT OR Apache-2.0"
+keywords = ["event-sourcing", "cqrs"]
+repository = "https://github.com/flowionab/event-souring"
+rust-version = "1.56"
+
+[dependencies]
+async-trait = "0.1"
+futures = "0.3"
+uuid = {version = "1.8", features = ["serde", "v4"]}
+tracing = "0.1"
+chrono = {version = "0.4", features = ["serde"]}
+serde = { version = "1.0", features = ["serde_derive"], optional = true }
+tokio = {version = "1", features = ["time", "sync"]}
+tokio-stream = { version = "0.1", features = ["sync"], optional = true }
+snafu = { version = "0.8", default-features = false }
+
+[dev-dependencies]
+tokio = {version = "1", features = ["full"]}
+
+[features]
+default = ["std", "in_memory"]
+postgres = ["dep:serde"]
+pubsub = ["std"]
+in_memory = ["std", "dep:tokio-stream"]
+std = []
