@@ -17,6 +17,16 @@ use futures::{StreamExt, TryStreamExt};
 use snafu::{ensure, ResultExt};
 use uuid::Uuid;
 
+#[cfg(feature = "prometheus")]
+lazy_static::lazy_static! {
+    static ref STORED_EVENT_COUNTER: prometheus::IntCounter =
+        prometheus::register_int_counter!("num_stored_events_count", "Number of stored events").unwrap();
+    static ref CREATED_AGGREGATES_COUNTER: prometheus::IntCounter =
+        prometheus::register_int_counter!("num_aggregates_created_count", "Number of newly created aggregates").unwrap();
+    static ref READ_EVENTS_COUNTER: prometheus::IntCounter =
+        prometheus::register_int_counter!("num_read_events_count", "Number of read events").unwrap();
+}
+
 /// The event store used to persisting events. Besides from using the store, to well, store events,
 /// it can also be used to fetch them, and to stream updates synced between different instances
 #[derive(Debug, Clone)]
@@ -54,6 +64,10 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E> EventStore<A, E> {
         }
 
         let mut aggregate = A::new_with_aggregate_id(aggregate_id);
+
+
+        #[cfg(feature = "prometheus")]
+        READ_EVENTS_COUNTER.inc_by(events.len() as u64);
 
         for event in events {
             aggregate.apply(&event);
@@ -128,6 +142,10 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E> EventStore<A, E> {
                 .context(AdapterSnafu {})?;
         }
 
+
+        #[cfg(feature = "prometheus")]
+        CREATED_AGGREGATES_COUNTER.inc_by(1);
+
         Ok(aggregate)
     }
 
@@ -195,6 +213,10 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E> EventStore<A, E> {
                     }
                     match self.adapter.save_events(&events).await {
                         Ok(_) => {
+
+                            #[cfg(feature = "prometheus")]
+                            STORED_EVENT_COUNTER.inc_by(events.len() as u64);
+
                             for event in events {
                                 let old_aggregate = aggregate.clone();
                                 aggregate.apply(&event);
@@ -248,6 +270,10 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E> EventStore<A, E> {
                         }
                         match self.adapter.save_events(&events).await {
                             Ok(_) => {
+
+                                #[cfg(feature = "prometheus")]
+                                STORED_EVENT_COUNTER.inc_by(events.len() as u64);
+
                                 for event in events {
                                     let old_aggregate = aggregate.clone();
                                     aggregate.apply(&event);

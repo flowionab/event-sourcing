@@ -1,6 +1,6 @@
 [package]
 name = "event-sourcing"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 description = "Event sourcing made ease!"
 license = "MIT OR Apache-2.0"
@@ -38,6 +38,8 @@ google-cloud-pubsub = {version = "0.25", default-features = false, features = [
     "auth"
 ], optional = true}
 prost-types = { version = "0.12", optional = true }
+prometheus = { version = "0.13", optional = true }
+lazy_static = { version = "1.4", optional = true }
 
 [dev-dependencies]
 tokio = {version = "1", features = ["full"]}
@@ -50,3 +52,4 @@ pubsub = ["std", "serde", "dep:google-cloud-googleapis", "dep:google-cloud-pubsu
 in_memory = ["std", "dep:tokio-stream"]
 serde = ["dep:serde", "dep:serde_json", "uuid/serde", "chrono/serde"]
 std = ["snafu/std", "tracing/std"]
+prometheus = ["dep:prometheus", "dep:lazy_static"]
