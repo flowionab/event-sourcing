@@ -50,7 +50,7 @@ impl<A: Aggregate<E>, E> PostgresAdapter<A, E> {
             event_id        BIGINT NOT NULL,
             created_at      TIMESTAMPTZ NOT NULL,
             user_id         TEXT,
-            payload         TEXT,
+            payload         JSON,
             PRIMARY KEY (aggregate_id, event_id)
           )",
                     A::name()
