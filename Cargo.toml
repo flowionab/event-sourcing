@@ -1,6 +1,6 @@
 [package]
 name = "event-sourcing"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 description = "Event sourcing made ease!"
 license = "MIT OR Apache-2.0"

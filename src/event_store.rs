@@ -60,8 +60,13 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, 
     /// Fetches a single aggregate
     pub async fn aggregate(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
         #[cfg(feature = "prometheus")]
-        let prom_timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["false", A::name()]).start_timer();
-
+        let timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["false", A::name()]).start_timer()
+        let result = self.aggregate_inner(aggregate_id).await;
+        #[cfg(feature = "prometheus")]
+        timer.observe_duration();
+        result
+    }
+    async fn aggregate_inner(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
         let stream = self.adapter.get_events(aggregate_id).await?;
         let mut aggregate = A::new_with_aggregate_id(aggregate_id);
 
@@ -72,9 +77,6 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, 
 
         #[cfg(feature = "prometheus")]
         READ_EVENTS_COUNTER.inc_by(aggregate.version());
-
-        #[cfg(feature = "prometheus")]
-        prom_timer.observe_duration();
 
         if aggregate.version() == 0 {
             Ok(None)
