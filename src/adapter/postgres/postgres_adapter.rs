@@ -120,8 +120,8 @@ impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync, E: std::fmt::Debug + Send 
 
     async fn aggregate_id_from_external_id(&self, external_id: &str) -> Result<Option<Uuid>, AdapterError> {
         let connection = self.pool.get().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
-        let row_opt = connection.query_opt("SELECT aggregate_id FROM {}_event_store_external_ids \
-                 WHERE external_id = $1", &[&external_id]).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
+        let row_opt = connection.query_opt(&format!("SELECT aggregate_id FROM {}_event_store_external_ids \
+                 WHERE external_id = $1", A::name()), &[&external_id]).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
         Ok(row_opt.map(|i| i.get("aggregate_id")))
     }
@@ -129,8 +129,8 @@ impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync, E: std::fmt::Debug + Send 
     async fn save_aggregate_id_to_external_ids(&self, aggregate_id: Uuid, external_ids: &[String]) -> Result<(), AdapterError> {
         let connection = self.pool.get().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
         for id in external_ids {
-            connection.execute("INSERT INTO {}_event_store_external_ids (aggregate_id, external_id)\
-                 VALUES ($1, $2)", &[&aggregate_id, &id]).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
+            connection.execute(&format!("INSERT INTO {}_event_store_external_ids (aggregate_id, external_id)\
+                 VALUES ($1, $2)", A::name()), &[&aggregate_id, &id]).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
         }
         Ok(())
     }
