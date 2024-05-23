@@ -1,6 +1,6 @@
 [package]
 name = "event-sourcing"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "Event sourcing made ease!"
 license = "MIT OR Apache-2.0"
@@ -40,7 +40,7 @@ google-cloud-pubsub = {version = "0.25", default-features = false, features = [
 prost-types = { version = "0.12", optional = true }
 prometheus = { version = "0.13", optional = true }
 lazy_static = { version = "1.4", optional = true }
-lapin = { version = "2.3", optional = true }
+lapin = { version = "2.3", optional = true, default-features = false }
 tokio-executor-trait = { version = "2.1", optional = true }
 tokio-reactor-trait = { version = "1.1", optional = true }
 
@@ -57,3 +57,4 @@ serde = ["dep:serde", "dep:serde_json", "uuid/serde", "chrono/serde"]
 std = ["snafu/std", "tracing/std"]
 prometheus = ["dep:prometheus", "dep:lazy_static"]
 amqp = ["std", "dep:serde", "dep:serde_json", "dep:lapin", "dep:tokio-executor-trait", "dep:tokio-reactor-trait"]
+amqp-tls = ["amqp", "lapin/rustls"]
