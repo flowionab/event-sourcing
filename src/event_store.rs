@@ -25,6 +25,8 @@ lazy_static::lazy_static! {
         prometheus::register_int_counter!("num_aggregates_created_count", "Number of newly created aggregates").unwrap();
     static ref READ_EVENTS_COUNTER: prometheus::IntCounter =
         prometheus::register_int_counter!("num_read_events_count", "Number of read events").unwrap();
+    static ref AGGREGATE_APPLY_TIME_HISTOGRAM: prometheus::HistogramVec =
+        prometheus::register_histogram_vec!("aggregate_apply_time", "Time fully build an aggregate", &["snapshot", "aggregate_name"], vec![0.001, 0.005, 0.010, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0]).unwrap();
 }
 
 /// The event store used to persisting events. Besides from using the store, to well, store events,
@@ -57,6 +59,9 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E> EventStore<A, E> {
 
     /// Fetches a single aggregate
     pub async fn aggregate(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
+        #[cfg(feature = "prometheus")]
+        let prom_timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["false", A::name()]).start_timer();
+
         let events = self.adapter.get_events(aggregate_id).await?;
 
         if events.is_empty() {
@@ -72,6 +77,9 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E> EventStore<A, E> {
         for event in events {
             aggregate.apply(&event);
         }
+
+        #[cfg(feature = "prometheus")]
+        prom_timer.observe_duration();
 
         Ok(Some(aggregate))
     }
