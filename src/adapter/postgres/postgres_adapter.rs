@@ -78,11 +78,11 @@ impl<A: Aggregate<E>, E> PostgresAdapter<A, E> {
 
 #[async_trait]
 impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync, E: std::fmt::Debug + Send + Sync + Serialize + DeserializeOwned> EventStoreAdapter<A, E> for PostgresAdapter<A, E> {
-    async fn get_events(&self, aggregate_id: Uuid) -> Result<Vec<Event<E>>, AdapterError> {
+    async fn get_events(&self, aggregate_id: Uuid) -> Result<BoxStream<Result<Event<E>, AdapterError>>, AdapterError> {
         let connection = self.pool.get().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
         let rows = connection
-            .query(
+            .query_raw(
                 &format!(
                     "SELECT aggregate_id, event_id, created_at, user_id, payload FROM {}_event_store WHERE aggregate_id = $1 ORDER BY event_id ASC",
                     A::name()
@@ -91,7 +91,7 @@ impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync, E: std::fmt::Debug + Send 
             )
             .await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
-        rows.into_iter().map(|i| i.try_into()).collect()
+        Ok(rows.map_err(|err| AdapterError::Other { error: err.to_string() }).and_then(|i| async move { i.try_into()}).boxed())
     }
 
     async fn stream_ids(&self) -> Result<BoxStream<Uuid>, AdapterError> {

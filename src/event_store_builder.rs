@@ -46,7 +46,7 @@ impl<A, E, ESA, NA> EventStoreBuilder<A, E, ESA, NA> {
     }
 }
 
-impl<A: Aggregate<E> + Send + Sync + Clone, E, ESA: EventStoreAdapter<A, E> + 'static, NA: NotificationAdapter<A, E> + 'static> EventStoreBuilder<A, E, ESA, NA> {
+impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send, ESA: EventStoreAdapter<A, E> + 'static, NA: NotificationAdapter<A, E> + 'static> EventStoreBuilder<A, E, ESA, NA> {
 
     pub fn build(self) -> EventStore<A, E> {
         EventStore::new(self.event_store_adapter, self.notification_adapter, self.store_attempts)

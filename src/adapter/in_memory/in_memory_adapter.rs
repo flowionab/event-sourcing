@@ -39,9 +39,9 @@ impl<A: Send + Clone, E: Clone> InMemoryAdapter<A, E> {
 impl<A: fmt::Debug + Send, E: Clone + fmt::Debug + Send + Sync> EventStoreAdapter<A, E>
     for InMemoryAdapter<A, E>
 {
-    async fn get_events(&self, aggregate_id: Uuid) -> Result<Vec<Event<E>>, AdapterError> {
+    async fn get_events(&self, aggregate_id: Uuid) -> Result<BoxStream<Result<Event<E>, AdapterError>>, AdapterError> {
         let lock = self.store.lock().await;
-        Ok(lock.get(&aggregate_id).cloned().unwrap_or_default())
+        Ok(iter(lock.get(&aggregate_id).cloned().unwrap_or_default().into_iter().map(Ok)).boxed())
     }
 
     async fn stream_ids(&self) -> Result<BoxStream<Uuid>, AdapterError> {

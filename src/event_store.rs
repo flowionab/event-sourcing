@@ -26,7 +26,7 @@ lazy_static::lazy_static! {
     static ref READ_EVENTS_COUNTER: prometheus::IntCounter =
         prometheus::register_int_counter!("num_read_events_count", "Number of read events").unwrap();
     static ref AGGREGATE_APPLY_TIME_HISTOGRAM: prometheus::HistogramVec =
-        prometheus::register_histogram_vec!("aggregate_apply_time", "Time fully build an aggregate", &["snapshot", "aggregate_name"], vec![0.001, 0.005, 0.010, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0]).unwrap();
+        prometheus::register_histogram_vec!("aggregate_apply_time", "Time fully build an aggregate", &["snapshot", "aggregate_name"], vec![0.001, 0.005, 0.010, 0.025, 0.05, 0.075, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0]).unwrap();
 }
 
 /// The event store used to persisting events. Besides from using the store, to well, store events,
@@ -39,7 +39,7 @@ pub struct EventStore<A: Aggregate<E>, E> {
     phantom_data: PhantomData<A>,
 }
 
-impl<A: Aggregate<E> + Send + Sync + Clone, E> EventStore<A, E> {
+impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, E> {
     pub(crate) fn new<T: EventStoreAdapter<A, E> + 'static, NT: NotificationAdapter<A, E> + 'static>(
         adapter: T,
         notification_adapter: NT,
@@ -62,26 +62,25 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E> EventStore<A, E> {
         #[cfg(feature = "prometheus")]
         let prom_timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["false", A::name()]).start_timer();
 
-        let events = self.adapter.get_events(aggregate_id).await?;
-
-        if events.is_empty() {
-            return Ok(None);
-        }
-
+        let stream = self.adapter.get_events(aggregate_id).await?;
         let mut aggregate = A::new_with_aggregate_id(aggregate_id);
 
+        aggregate = stream.try_fold(aggregate, |mut a, event| async move {
+            a.apply(&event);
+            Ok(a)
+        }).await?;
 
         #[cfg(feature = "prometheus")]
-        READ_EVENTS_COUNTER.inc_by(events.len() as u64);
-
-        for event in events {
-            aggregate.apply(&event);
-        }
+        READ_EVENTS_COUNTER.inc_by(aggregate.version());
 
         #[cfg(feature = "prometheus")]
         prom_timer.observe_duration();
 
-        Ok(Some(aggregate))
+        if aggregate.version() == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(aggregate))
+        }
     }
 
     /// Returns all ids in the store
@@ -490,7 +489,7 @@ mod tests {
             .await
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap();
+        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(events.len(), 1);
     }
 
@@ -565,7 +564,7 @@ mod tests {
             .await
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap();
+        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(events.len(), 1);
     }
 
@@ -624,7 +623,7 @@ mod tests {
             .await
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap();
+        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 2)
     }
@@ -746,7 +745,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap();
+        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 2)
     }
@@ -865,7 +864,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap();
+        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 2)
     }
@@ -888,13 +887,13 @@ mod tests {
             .await
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap();
+        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 1);
 
         store.remove(id).await.unwrap();
 
-        let events = adapter.get_events(id).await.unwrap();
+        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 0);
     }
