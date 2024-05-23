@@ -11,5 +11,8 @@ mod notification_adapter;
 #[cfg(feature = "pubsub")]
 pub mod pubsub;
 
+#[cfg(feature = "amqp")]
+pub mod amqp;
+
 pub use self::event_store_adapter::EventStoreAdapter;
 pub use self::notification_adapter::*;

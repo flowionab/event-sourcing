@@ -120,6 +120,11 @@ impl<A: Aggregate<E> + Clone + fmt::Debug + Send + Sync + serde::Serialize + ser
                     let data: ListenForEventData<A, E> =
                         serde_json::from_slice(&message.message.data)
                             .map_err(|err| AdapterError::Other { error: err.to_string() })?;
+                    tokio::spawn(async move {
+                        if let Err(e) = message.ack().await {
+                            warn!(error_message = e.to_string(), "Failed to ack message");
+                        }
+                    });
                     Ok(Some(data))
                 } else {
                     tokio::spawn(async move {
