@@ -108,10 +108,10 @@ impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync + Serialize + DeserializeOw
                 connection
                     .query_raw(
                         &format!(
-                            "SELECT aggregate_id, event_id, created_at, user_id, payload FROM {}_event_store WHERE aggregate_id = $1 AND event_id > $2 ORDER BY event_id ASC",
-                            A::name()
+                            "SELECT aggregate_id, event_id, created_at, user_id, payload FROM {}_event_store WHERE aggregate_id = $1 AND event_id > {} ORDER BY event_id ASC",
+                            A::name(), num
                         ),
-                        &[&aggregate_id.to_string(), &num.to_string()],
+                        &[&aggregate_id],
                     )
                     .await.map_err(|err| AdapterError::Other { error: err.to_string() })?
             }
