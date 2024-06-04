@@ -1,5 +1,6 @@
 use core::fmt;
 use std::marker::PhantomData;
+use std::mem::forget;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
@@ -15,8 +16,6 @@ const EXCHANGE_NAME: &str = "event-stream";
 
 #[derive(Debug)]
 pub struct AmqpAdapter<A, E> {
-    #[allow(dead_code)]
-    connection: Connection,
     channel: Channel,
     service_name: String,
     phantom_data: PhantomData<(A, E)>,
@@ -40,10 +39,15 @@ impl<A, E> AmqpAdapter<A, E> {
 
         let channel = connection.create_channel().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
+        forget(connection);
+
+        Self::setup_with_channel(service_name, channel).await
+    }
+
+    pub async fn setup_with_channel(service_name: &str, channel: Channel) -> Result<Self, AdapterError> {
         channel.exchange_declare(EXCHANGE_NAME, ExchangeKind::Direct, ExchangeDeclareOptions::default(), FieldTable::default()).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
         Ok(Self {
-            connection,
             channel,
             service_name: service_name.to_string(),
             phantom_data: PhantomData,

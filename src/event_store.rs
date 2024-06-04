@@ -61,9 +61,12 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, 
     pub async fn aggregate(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
         #[cfg(feature = "prometheus")]
         let timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["false", A::name()]).start_timer();
+
         let result = self.aggregate_inner(aggregate_id).await;
+
         #[cfg(feature = "prometheus")]
         timer.observe_duration();
+
         result
     }
     async fn aggregate_inner(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
