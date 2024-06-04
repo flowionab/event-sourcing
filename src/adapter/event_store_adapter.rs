@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 #[async_trait]
 pub trait EventStoreAdapter<A, E>: fmt::Debug + Send + Sync {
-    async fn get_events(&self, aggregate_id: Uuid) -> Result<BoxStream<Result<Event<E>, AdapterError>>, AdapterError>;
+    async fn get_events(&self, aggregate_id: Uuid, from: Option<u64>) -> Result<BoxStream<Result<Event<E>, AdapterError>>, AdapterError>;
     async fn stream_ids(&self) -> Result<BoxStream<Uuid>, AdapterError>;
 
     async fn aggregate_id_from_external_id(
@@ -26,4 +26,8 @@ pub trait EventStoreAdapter<A, E>: fmt::Debug + Send + Sync {
     async fn save_events(&self, events: &[Event<E>]) -> Result<(), AdapterError>;
 
     async fn remove(&self, aggregate_id: Uuid) -> Result<(), AdapterError>;
+
+    async fn get_snapshot(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError>;
+
+    async fn save_snapshot(&self, aggregate: &A) -> Result<(), AdapterError>;
 }

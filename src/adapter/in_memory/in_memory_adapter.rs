@@ -1,7 +1,7 @@
 use crate::adapter::notification_adapter::ListenForEventData;
 use crate::adapter::{EventStoreAdapter, NotificationAdapter};
 use crate::error::AdapterError;
-use crate::Event;
+use crate::{Aggregate, Event};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
@@ -20,6 +20,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct InMemoryAdapter<A, E> {
     store: Arc<Mutex<BTreeMap<Uuid, Vec<Event<E>>>>>,
+    snapshots: Arc<Mutex<BTreeMap<Uuid, A>>>,
     external_ids: Arc<Mutex<BTreeMap<String, Uuid>>>,
     sender: Sender<ListenForEventData<A, E>>,
 }
@@ -29,6 +30,7 @@ impl<A: Send + Clone, E: Clone> InMemoryAdapter<A, E> {
         let (sender, _) = broadcast::channel(16);
         Self {
             store: Arc::new(Mutex::new(BTreeMap::new())),
+            snapshots: Arc::new(Mutex::new(BTreeMap::new())),
             external_ids: Arc::new(Mutex::new(BTreeMap::new())),
             sender,
         }
@@ -36,12 +38,18 @@ impl<A: Send + Clone, E: Clone> InMemoryAdapter<A, E> {
 }
 
 #[async_trait]
-impl<A: fmt::Debug + Send, E: Clone + fmt::Debug + Send + Sync> EventStoreAdapter<A, E>
+impl<A: Aggregate<E> + fmt::Debug + Send + Clone + Sync, E: Clone + fmt::Debug + Send + Sync> EventStoreAdapter<A, E>
     for InMemoryAdapter<A, E>
 {
-    async fn get_events(&self, aggregate_id: Uuid) -> Result<BoxStream<Result<Event<E>, AdapterError>>, AdapterError> {
+    async fn get_events(&self, aggregate_id: Uuid, from: Option<u64>) -> Result<BoxStream<Result<Event<E>, AdapterError>>, AdapterError> {
         let lock = self.store.lock().await;
-        Ok(iter(lock.get(&aggregate_id).cloned().unwrap_or_default().into_iter().map(Ok)).boxed())
+        Ok(iter(lock.get(&aggregate_id).cloned().unwrap_or_default().into_iter().filter(move |e| {
+            if let Some(from) = from {
+                e.event_id > from
+            } else {
+                true
+            }
+        }).map(Ok)).boxed())
     }
 
     async fn stream_ids(&self) -> Result<BoxStream<Uuid>, AdapterError> {
@@ -91,6 +99,17 @@ impl<A: fmt::Debug + Send, E: Clone + fmt::Debug + Send + Sync> EventStoreAdapte
     async fn remove(&self, aggregate_id: Uuid) -> Result<(), AdapterError> {
         let mut lock = self.store.lock().await;
         lock.remove(&aggregate_id);
+        Ok(())
+    }
+
+    async fn get_snapshot(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
+        let lock = self.snapshots.lock().await;
+        Ok(lock.get(&aggregate_id).cloned())
+    }
+
+    async fn save_snapshot(&self, aggregate: &A) -> Result<(), AdapterError> {
+        let mut lock = self.snapshots.lock().await;
+        lock.insert(aggregate.aggregate_id(), aggregate.clone());
         Ok(())
     }
 }

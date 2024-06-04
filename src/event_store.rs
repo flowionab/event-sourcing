@@ -69,11 +69,60 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, 
 
         result
     }
+
+    /// Fetches a single aggregate
+    pub async fn aggregate_without_snapshot(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
+        #[cfg(feature = "prometheus")]
+            let timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["true", A::name()]).start_timer();
+
+        let result = self.aggregate_inner_without_snapshot(aggregate_id).await;
+
+        #[cfg(feature = "prometheus")]
+        timer.observe_duration();
+
+        result
+    }
     async fn aggregate_inner(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
-        let stream = self.adapter.get_events(aggregate_id).await?;
+        match self.adapter.get_snapshot(aggregate_id).await? {
+            Some(mut aggregate) => {
+                let start_version = aggregate.version();
+                let stream = self.adapter.get_events(aggregate_id, Some(aggregate.version())).await?;
+
+                aggregate = stream.try_fold(aggregate, |mut a, event| async move {
+                    ensure!(
+                        event.event_id == (a.version() + 1) as u64,
+                        crate::error::adapter_error::InconsistentEventOrderingSnafu
+                    );
+                    a.apply(&event);
+                    Ok(a)
+                }).await?;
+
+                #[cfg(feature = "prometheus")]
+                READ_EVENTS_COUNTER.inc_by(aggregate.version() - start_version);
+
+                if aggregate.version() == 0 {
+                    Ok(None)
+                } else {
+                    if (aggregate.version() - start_version) > 10 {
+                        self.adapter.save_snapshot(&aggregate).await?;
+                    }
+                    Ok(Some(aggregate))
+                }
+            }
+            None => {
+                self.aggregate_inner_without_snapshot(aggregate_id).await
+            }
+        }
+    }
+    async fn aggregate_inner_without_snapshot(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
+        let stream = self.adapter.get_events(aggregate_id, None).await?;
         let mut aggregate = A::new_with_aggregate_id(aggregate_id);
 
         aggregate = stream.try_fold(aggregate, |mut a, event| async move {
+            ensure!(
+                event.event_id == (a.version() + 1) as u64,
+                crate::error::adapter_error::InconsistentEventOrderingSnafu
+            );
             a.apply(&event);
             Ok(a)
         }).await?;
@@ -84,6 +133,7 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, 
         if aggregate.version() == 0 {
             Ok(None)
         } else {
+            self.adapter.save_snapshot(&aggregate).await?;
             Ok(Some(aggregate))
         }
     }
@@ -494,7 +544,7 @@ mod tests {
             .await
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
+        let events = adapter.get_events(id, None).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(events.len(), 1);
     }
 
@@ -569,7 +619,7 @@ mod tests {
             .await
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
+        let events = adapter.get_events(id, None).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(events.len(), 1);
     }
 
@@ -628,7 +678,7 @@ mod tests {
             .await
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
+        let events = adapter.get_events(id, None).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 2)
     }
@@ -750,7 +800,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
+        let events = adapter.get_events(id, None).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 2)
     }
@@ -869,7 +919,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
+        let events = adapter.get_events(id, None).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 2)
     }
@@ -892,13 +942,13 @@ mod tests {
             .await
             .unwrap();
 
-        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
+        let events = adapter.get_events(id, None).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 1);
 
         store.remove(id).await.unwrap();
 
-        let events = adapter.get_events(id).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
+        let events = adapter.get_events(id, None).await.unwrap().try_collect::<Vec<_>>().await.unwrap();
 
         assert_eq!(events.len(), 0);
     }

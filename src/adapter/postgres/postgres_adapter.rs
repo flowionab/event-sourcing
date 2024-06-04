@@ -67,6 +67,17 @@ impl<A: Aggregate<E>, E> PostgresAdapter<A, E> {
                     A::name()
                 ))
                 .await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
+
+            connection
+                .simple_query(&format!(
+                    "CREATE TABLE IF NOT EXISTS {}_event_store_snapshots (
+            aggregate_id    UUID NOT NULL UNIQUE,
+            payload         JSON,
+            PRIMARY KEY (aggregate_id)
+          )",
+                    A::name()
+                ))
+                .await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
         }
 
         Ok(Self {
@@ -77,19 +88,35 @@ impl<A: Aggregate<E>, E> PostgresAdapter<A, E> {
 }
 
 #[async_trait]
-impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync, E: std::fmt::Debug + Send + Sync + Serialize + DeserializeOwned> EventStoreAdapter<A, E> for PostgresAdapter<A, E> {
-    async fn get_events(&self, aggregate_id: Uuid) -> Result<BoxStream<Result<Event<E>, AdapterError>>, AdapterError> {
+impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync + Serialize + DeserializeOwned, E: std::fmt::Debug + Send + Sync + Serialize + DeserializeOwned> EventStoreAdapter<A, E> for PostgresAdapter<A, E> {
+    async fn get_events(&self, aggregate_id: Uuid, from: Option<u64>) -> Result<BoxStream<Result<Event<E>, AdapterError>>, AdapterError> {
         let connection = self.pool.get().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
-        let rows = connection
-            .query_raw(
-                &format!(
-                    "SELECT aggregate_id, event_id, created_at, user_id, payload FROM {}_event_store WHERE aggregate_id = $1 ORDER BY event_id ASC",
-                    A::name()
-                ),
-                &[&aggregate_id],
-            )
-            .await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
+        let rows = match from {
+            None => {
+                connection
+                    .query_raw(
+                        &format!(
+                            "SELECT aggregate_id, event_id, created_at, user_id, payload FROM {}_event_store WHERE aggregate_id = $1 ORDER BY event_id ASC",
+                            A::name()
+                        ),
+                        &[&aggregate_id],
+                    )
+                    .await.map_err(|err| AdapterError::Other { error: err.to_string() })?
+            }
+            Some(num) => {
+                connection
+                    .query_raw(
+                        &format!(
+                            "SELECT aggregate_id, event_id, created_at, user_id, payload FROM {}_event_store WHERE aggregate_id = $1 AND event_id > $2 ORDER BY event_id ASC",
+                            A::name()
+                        ),
+                        &[&aggregate_id.to_string(), &num.to_string()],
+                    )
+                    .await.map_err(|err| AdapterError::Other { error: err.to_string() })?
+            }
+        };
+
 
         Ok(rows.map_err(|err| AdapterError::Other { error: err.to_string() }).and_then(|i| async move { i.try_into()}).boxed())
     }
@@ -178,6 +205,27 @@ impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync, E: std::fmt::Debug + Send 
             )
             .await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
+        Ok(())
+    }
+
+    async fn get_snapshot(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
+        let connection = self.pool.get().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
+        let row_opt = connection.query_opt(&format!("SELECT payload FROM {}_event_store_snapshots \
+                 WHERE aggregate_id = $1", A::name()), &[&aggregate_id]).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
+
+        match row_opt {
+            Some(row) => {
+                let payload = serde_json::from_value(row.get::<_, serde_json::Value>(0)).map_err(|err| AdapterError::Other { error: err.to_string() })?;
+                Ok(Some(payload))
+            },
+            None => Ok(None),
+        }
+    }
+
+    async fn save_snapshot(&self, aggregate: &A) -> Result<(), AdapterError> {
+        let connection = self.pool.get().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
+        connection.execute(&format!("INSERT INTO {}_event_store_snapshots (aggregate_id, payload)\
+                 VALUES ($1, $2) ON CONFLICT (aggregate_id) DO UPDATE SET payload = $2", A::name()), &[&aggregate.aggregate_id(), &serde_json::to_value(aggregate).unwrap()]).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
         Ok(())
     }
 }

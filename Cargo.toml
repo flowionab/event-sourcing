@@ -1,11 +1,11 @@
 [package]
 name = "event-sourcing"
-version = "0.1.13"
+version = "0.1.14"
 edition = "2021"
 description = "Event sourcing made ease!"
 license = "MIT OR Apache-2.0"
 keywords = ["event-sourcing", "cqrs"]
-repository = "https://github.com/flowionab/event-souring"
+repository = "https://github.com/flowionab/event-sourcing"
 rust-version = "1.56"
 authors = ["Joatin Granlund <joatin@granlund.io>"]
 
