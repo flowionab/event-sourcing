@@ -5,7 +5,7 @@ use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use lapin::{BasicProperties, Channel, Connection, ConnectionProperties, ExchangeKind};
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions};
-use lapin::types::FieldTable;
+use lapin::types::{AMQPValue, FieldTable};
 use tracing::warn;
 use crate::adapter::{ListenForEventData, NotificationAdapter};
 use crate::{Aggregate, Event};
@@ -67,17 +67,19 @@ impl<A: Aggregate<E> + Clone + fmt::Debug + Send + Sync + serde::Serialize + ser
     }
 
     async fn listen_for_events(&self) -> Result<BoxStream<Result<ListenForEventData<A, E>, AdapterError>>, AdapterError> {
+        let mut fields = FieldTable::default();
+        fields.insert("x-queue-type".into(), AMQPValue::LongString("quorum".into()));
         let queue = self.channel
             .queue_declare(
                 &format!("{}_{}", self.service_name, A::name()),
                 QueueDeclareOptions {
                     passive: false,
-                    durable: false,
+                    durable: true,
                     exclusive: false,
-                    auto_delete: true,
+                    auto_delete: false,
                     nowait: false,
                 },
-                FieldTable::default(),
+                fields,
             )
             .await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
