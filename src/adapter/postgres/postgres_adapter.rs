@@ -40,7 +40,7 @@ impl<A: Aggregate<E>, E> PostgresAdapter<A, E> {
     ) -> Result<Self, AdapterError> {
 
         let manager = PostgresConnectionManager::new(config, tokio_postgres::NoTls);
-        let pool = Pool::builder().build(manager).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
+        let pool = Pool::builder().min_idle(3).build(manager).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
         {
             let connection = pool.get().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
             connection

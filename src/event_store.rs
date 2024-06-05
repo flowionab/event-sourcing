@@ -149,7 +149,7 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, 
             .ids()
             .await?
             .map(move |id| async move { self.aggregate(id).await })
-            .buffer_unordered(4)
+            .buffer_unordered(2)
             .try_filter_map(|i| async move { Ok(i) })
             .boxed())
     }
