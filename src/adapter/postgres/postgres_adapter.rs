@@ -4,6 +4,7 @@ use core::marker::PhantomData;
 use core::str::FromStr;
 use crate::error::AdapterError;
 use std::env;
+use std::time::Duration;
 use async_trait::async_trait;
 use bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
@@ -40,7 +41,7 @@ impl<A: Aggregate<E>, E> PostgresAdapter<A, E> {
     ) -> Result<Self, AdapterError> {
 
         let manager = PostgresConnectionManager::new(config, tokio_postgres::NoTls);
-        let pool = Pool::builder().min_idle(3).build(manager).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
+        let pool = Pool::builder().min_idle(3).connection_timeout(Duration::from_secs(360)).build(manager).await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
         {
             let connection = pool.get().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
             connection
