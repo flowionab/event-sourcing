@@ -8,7 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
-use futures::stream::BoxStream;
+use futures::stream::{BoxStream, iter};
 use futures::{StreamExt, TryStreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -126,7 +126,7 @@ impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync + Serialize + DeserializeOw
         let connection = self.pool.get().await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
         let rows = connection
-            .query_raw::<_, &String, _>(
+            .query(
                 &format!(
                     "SELECT DISTINCT aggregate_id FROM {}_event_store",
                     A::name()
@@ -135,14 +135,11 @@ impl<A: Aggregate<E> + std::fmt::Debug + Send + Sync + Serialize + DeserializeOw
             )
             .await.map_err(|err| AdapterError::Other { error: err.to_string() })?;
 
-        Ok(rows
-            .into_stream()
-            .filter_map(|i| async {
-                match i {
-                    Ok(row) => Some(row.get(0)),
-                    Err(_) => None,
-                }
-            })
+        Ok(iter(rows
+            .into_iter()
+            .filter_map(|row| {
+                row.get(0)
+            }))
             .boxed())
     }
 
