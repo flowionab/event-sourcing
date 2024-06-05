@@ -60,7 +60,7 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, 
     /// Fetches a single aggregate
     pub async fn aggregate(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
         #[cfg(feature = "prometheus")]
-        let timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["false", A::name()]).start_timer();
+        let timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["true", A::name()]).start_timer();
 
         let result = self.aggregate_inner(aggregate_id).await;
 
@@ -73,7 +73,7 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, 
     /// Fetches a single aggregate
     pub async fn aggregate_without_snapshot(&self, aggregate_id: Uuid) -> Result<Option<A>, AdapterError> {
         #[cfg(feature = "prometheus")]
-            let timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["true", A::name()]).start_timer();
+            let timer = AGGREGATE_APPLY_TIME_HISTOGRAM.with_label_values(&["false", A::name()]).start_timer();
 
         let result = self.aggregate_inner_without_snapshot(aggregate_id).await;
 
@@ -148,7 +148,8 @@ impl<A: Aggregate<E> + Send + Sync + Clone, E: std::marker::Send> EventStore<A, 
         Ok(self
             .ids()
             .await?
-            .then(move |id| async move { self.aggregate(id).await })
+            .map(move |id| async move { self.aggregate(id).await })
+            .buffer_unordered(4)
             .try_filter_map(|i| async move { Ok(i) })
             .boxed())
     }
